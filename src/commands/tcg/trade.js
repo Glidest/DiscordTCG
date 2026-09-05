@@ -4,7 +4,7 @@ const Trade = require('../../models/Trade');
 const Card = require('../../models/Card');
 const UserCollection = require('../../models/UserCollection');
 const { v4: uuidv4 } = require('uuid');
-const mongoose = require('mongoose');
+const { getDB } = require('../../config/database');
 
 const TRADE_LIMITS = {
     MAX_CARDS_PER_TRADE: 10,
@@ -223,133 +223,86 @@ module.exports = {
 
             case 'accept': {
                 const tradeId = interaction.options.getString('trade_id');
-                const session = await mongoose.startSession();
-                
                 try {
-                    await session.withTransaction(async () => {
-                        const trade = await Trade.findOne({ tradeId, status: 'pending' })
-                            .session(session);
+                    let trade = await Trade.findOne({ tradeId, status: 'pending' });
+                    if (!trade) throw new Error('Trade offer not found or already processed.');
+                    if (trade.targetId !== interaction.user.id) throw new Error('This trade offer is not for you.');
 
-                        if (!trade) {
-                            throw new Error('Trade offer not found or already processed.');
+                    const moveCards = (from, to, entries) => {
+                        for (const entry of entries) {
+                            const cardId = String(entry.cardId && entry.cardId._id || entry.cardId);
+                            const fromCard = from.cards.find(card =>
+                                String(card.cardId && card.cardId._id || card.cardId) === cardId &&
+                                card.cardType === entry.cardType && card.quantity >= entry.quantity);
+                            if (!fromCard) throw new Error('Trade cancelled: Cards are no longer available.');
+                            fromCard.quantity -= entry.quantity;
+                            if (fromCard.quantity <= 0) from.cards = from.cards.filter(card => card !== fromCard);
+                            const toCard = to.cards.find(card =>
+                                String(card.cardId && card.cardId._id || card.cardId) === cardId &&
+                                card.cardType === entry.cardType);
+                            if (toCard) toCard.quantity += entry.quantity;
+                            else to.cards.push({ cardId, cardType: entry.cardType, quantity: entry.quantity, special: false });
+                        }
+                    };
+                    getDB().transaction(() => {
+                        const currentTradeRow = getDB().prepare(
+                            'SELECT * FROM trades WHERE trade_id = ? AND status = ?'
+                        ).get(tradeId, 'pending');
+                        if (!currentTradeRow) {
+                            throw new Error('Trade offer was already processed.');
                         }
 
-                        if (trade.targetId !== interaction.user.id) {
-                            throw new Error('This trade offer is not for you.');
-                        }
-
-                        const [initiatorCollection, targetCollection] = await Promise.all([
-                            UserCollection.findOne({ userId: trade.initiatorId }).session(session),
-                            UserCollection.findOne({ userId: trade.targetId }).session(session)
-                        ]);
-
+                        const currentTrade = Trade._fromRow(currentTradeRow, true);
+                        const initiatorRow = getDB().prepare(
+                            'SELECT * FROM user_collections WHERE user_id = ?'
+                        ).get(currentTrade.initiatorId);
+                        const targetRow = getDB().prepare(
+                            'SELECT * FROM user_collections WHERE user_id = ?'
+                        ).get(currentTrade.targetId);
+                        const initiatorCollection = initiatorRow
+                            ? UserCollection._fromRow(initiatorRow, true)
+                            : null;
+                        const targetCollection = targetRow
+                            ? UserCollection._fromRow(targetRow, true)
+                            : null;
                         if (!initiatorCollection || !targetCollection) {
                             throw new Error('One or both users\' collections not found.');
                         }
 
-                        // Validate cards are still available
-                        const [initiatorValidation, targetValidation] = await Promise.all([
-                            validateCards(trade.initiatorId, trade.initiatorCards.map(c => c.cardId).join(','), 
-                                Object.fromEntries(trade.initiatorCards.map(c => [c.cardId, c.quantity]))),
-                            validateCards(trade.targetId, trade.targetCards.map(c => c.cardId).join(','),
-                                Object.fromEntries(trade.targetCards.map(c => [c.cardId, c.quantity])))
-                        ]);
+                        moveCards(initiatorCollection, targetCollection, currentTrade.initiatorCards);
+                        moveCards(targetCollection, initiatorCollection, currentTrade.targetCards);
 
-                        if (!initiatorValidation.valid || !targetValidation.valid) {
-                            trade.status = 'cancelled';
-                            trade.cancelledBy = interaction.user.id;
-                            await trade.save({ session });
-                            throw new Error('Trade cancelled: Cards are no longer available.');
+                        const claim = getDB().prepare(
+                            'UPDATE trades SET status = ? WHERE trade_id = ? AND status = ?'
+                        ).run('completed', tradeId, 'pending');
+                        if (claim.changes !== 1) {
+                            throw new Error('Trade offer was already processed.');
                         }
 
-                        // Execute the trade within transaction
-                        for (const card of trade.initiatorCards) {
-                            const initiatorCard = initiatorCollection.cards.find(c => 
-                                c.cardId.toString() === card.cardId.toString() && 
-                                c.cardType === card.cardType
-                            );
-                            const targetCard = targetCollection.cards.find(c => 
-                                c.cardId.toString() === card.cardId.toString() && 
-                                c.cardType === card.cardType
-                            );
-
-                            initiatorCard.quantity -= card.quantity;
-                            if (initiatorCard.quantity <= 0) {
-                                initiatorCollection.cards = initiatorCollection.cards.filter(c => 
-                                    c.cardId.toString() !== initiatorCard.cardId.toString() || 
-                                    c.cardType !== initiatorCard.cardType
-                                );
-                            }
-
-                            if (targetCard) {
-                                targetCard.quantity += card.quantity;
-                            } else {
-                                targetCollection.cards.push({
-                                    cardId: card.cardId,
-                                    cardType: card.cardType,
-                                    quantity: card.quantity,
-                                    special: false
-                                });
-                            }
-                        }
-
-                        for (const card of trade.targetCards) {
-                            const targetCard = targetCollection.cards.find(c => 
-                                c.cardId.toString() === card.cardId.toString() && 
-                                c.cardType === card.cardType
-                            );
-                            const initiatorCard = initiatorCollection.cards.find(c => 
-                                c.cardId.toString() === card.cardId.toString() && 
-                                c.cardType === card.cardType
-                            );
-
-                            targetCard.quantity -= card.quantity;
-                            if (targetCard.quantity <= 0) {
-                                targetCollection.cards = targetCollection.cards.filter(c => 
-                                    c.cardId.toString() !== targetCard.cardId.toString() || 
-                                    c.cardType !== targetCard.cardType
-                                );
-                            }
-
-                            if (initiatorCard) {
-                                initiatorCard.quantity += card.quantity;
-                            } else {
-                                initiatorCollection.cards.push({
-                                    cardId: card.cardId,
-                                    cardType: card.cardType,
-                                    quantity: card.quantity,
-                                    special: false
-                                });
-                            }
-                        }
-
-                        await Promise.all([
-                            initiatorCollection.save({ session }),
-                            targetCollection.save({ session }),
-                            trade.save({ session })
-                        ]);
-                    });
+                        UserCollection._save(initiatorCollection);
+                        UserCollection._save(targetCollection);
+                        currentTrade.status = 'completed';
+                        Trade._save(currentTrade);
+                        trade = currentTrade;
+                    })();
 
                     // If we get here, transaction was successful
-                    const trade = await Trade.findOne({ tradeId });
+                    const completedTrade = await Trade.findOne({ tradeId });
                     const embed = new MessageEmbed()
                         .setColor('#00FF00')
                         .setTitle('✅ Trade Completed')
                         .setDescription('The trade has been successfully completed!')
                         .addFields(
-                            { name: 'Trade ID', value: trade.tradeId },
-                            { name: 'Traded Cards', value: `${trade.initiatorCards.length} cards exchanged` }
+                            { name: 'Trade ID', value: completedTrade.tradeId },
+                            { name: 'Traded Cards', value: `${completedTrade.initiatorCards.length} cards exchanged` }
                         )
                         .setTimestamp();
 
                     await interaction.reply({ embeds: [embed] });
-                    await interaction.client.users.cache.get(trade.initiatorId)?.send({ embeds: [embed] });
+                    await interaction.client.users.cache.get(completedTrade.initiatorId)?.send({ embeds: [embed] });
 
                 } catch (error) {
-                    await session.abortTransaction();
                     throw error;
-                } finally {
-                    await session.endSession();
                 }
                 break;
             }
@@ -366,9 +319,15 @@ module.exports = {
                     return interaction.reply('You cannot cancel this trade offer.');
                 }
 
+                const cancellation = getDB().prepare(
+                    'UPDATE trades SET status = ?, cancelled_at = ?, cancelled_by = ? WHERE trade_id = ? AND status = ?'
+                ).run('cancelled', new Date().toISOString(), interaction.user.id, tradeId, 'pending');
+                if (cancellation.changes !== 1) {
+                    return interaction.reply('Trade offer was already processed.');
+                }
                 trade.status = 'cancelled';
                 trade.cancelledBy = interaction.user.id;
-                await trade.save();
+                trade.cancelledAt = new Date();
 
                 const embed = new MessageEmbed()
                     .setColor('#FF0000')

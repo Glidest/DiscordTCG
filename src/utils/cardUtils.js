@@ -77,7 +77,7 @@ async function addExperience(user, amount) {
         if (xenitharCard) {
             hasXenithar = userCollection.cards.some(card => 
                 card.cardId && 
-                card.cardId._id.toString() === xenitharCard._id.toString() && 
+                card.cardId._id.toString() === xenitharCard._id.toString() &&
                 card.quantity > 0
             );
         }

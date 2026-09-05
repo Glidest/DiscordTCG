@@ -12,5 +12,5 @@ module.exports = {
     deityChance: parseFloat(process.env.DEITY_CHANCE || '0.001'),
     specialPrefix: process.env.SPECIAL_PREFIX || null,
     canGenerateSpecialCards: () => Boolean(process.env.SPECIAL_PREFIX),
-    currencyName: process.env.CURRENCY_NAME
+    currencyName: process.env.CURRENCY_NAME || 'credits'
 };

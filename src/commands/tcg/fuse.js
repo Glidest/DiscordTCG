@@ -3,7 +3,6 @@ const { MessageEmbed } = require('discord.js');
 const Card = require('../../models/Card');
 const FusedCard = require('../../models/FusedCard');
 const UserCollection = require('../../models/UserCollection');
-const mongoose = require('mongoose');
 const User = require('../../models/User');
 const fetch = require('node-fetch');
 const fs = require('fs').promises;

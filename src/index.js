@@ -1,5 +1,5 @@
 const { Client, Collection, Intents } = require('discord.js');
-const mongoose = require('mongoose');
+const { connectDB } = require('./config/database');
 require('dotenv').config();
 
 const client = new Client({
@@ -13,10 +13,11 @@ const client = new Client({
 // Command collection
 client.commands = new Collection();
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+// Open the local SQLite database and apply migrations before handling commands.
+connectDB().catch(err => {
+    console.error('SQLite connection error:', err);
+    process.exit(1);
+});
 
 // Load commands
 require('./commands/commandLoader')(client);

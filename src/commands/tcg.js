@@ -12,6 +12,7 @@ const fuseCommand = require('./tcg/fuse');
 const tradeCommand = require('./tcg/trade');
 const inspectCommand = require('./tcg/inspect');
 const battleCommand = require('./tcg/battle');
+const deckCommand = require('./tcg/deck');
 
 const data = new SlashCommandBuilder()
     .setName('tcg')
@@ -28,6 +29,17 @@ const data = new SlashCommandBuilder()
     .addSubcommand(fuseCommand.data)
     .addSubcommand(inspectCommand.data)
     .addSubcommand(battleCommand.data)
+    .addSubcommandGroup(subcommandGroup =>
+        subcommandGroup
+            .setName('deck')
+            .setDescription('Manage your card decks')
+            .addSubcommand(deckCommand.data.options[0])
+            .addSubcommand(deckCommand.data.options[1])
+            .addSubcommand(deckCommand.data.options[2])
+            .addSubcommand(deckCommand.data.options[3])
+            .addSubcommand(deckCommand.data.options[4])
+            .addSubcommand(deckCommand.data.options[5])
+            .addSubcommand(deckCommand.data.options[6]))
     .addSubcommandGroup(subcommandGroup =>
         subcommandGroup
             .setName('trade')
@@ -79,6 +91,9 @@ async function execute(interaction) {
         // Handle trade command group
         if (subcommandGroup === 'trade') {
             return await tradeCommand.execute(interaction);
+        }
+        if (subcommandGroup === 'deck') {
+            return await deckCommand.execute(interaction);
         }
 
         // Handle regular subcommands

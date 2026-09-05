@@ -32,12 +32,24 @@ All commands use the `/tcg` prefix:
 ### Card Fusion
 - `/tcg fuse <card1> <card2>` - Fuse two cards to create a special fused card
 
+### Deck Management
+- `/tcg deck create <name>` - Create a deck (the first deck becomes active)
+- `/tcg deck add <name> <card>` - Add an owned card to a deck
+- `/tcg deck remove <name> <card>` - Remove a card from a deck
+- `/tcg deck view [name]` - View a deck, or your active deck
+- `/tcg deck list` - List your decks and their active status
+- `/tcg deck activate <name>` - Set a deck as active
+- `/tcg deck delete <name>` - Delete a deck
+
 ### Economy
 - `/tcg earn` - Earn currency (with cooldown)
 - `/tcg givecurrency <user> <amount>` - [Admin] Give currency to a user
 
 ### Utility
 - `/tcg help` - List all available commands and their functions
+
+When an active deck exists, `/tcg battle` requires the selected card to be in that
+deck. The optional `deck` argument can select a different deck for the battle.
 
 ## Scripts
 
@@ -46,7 +58,7 @@ All commands use the `/tcg` prefix:
   - Usage: `npm run generate-images`
   - Generates images for cards that need them
   - Updates cards.json with image URLs
-  - Syncs all cards to the MongoDB database
+  - Syncs all cards to the local SQLite database
 
 ### Bot Management
 - `deployCommands.js` - Deploy slash commands to Discord
@@ -74,7 +86,7 @@ All commands use the `/tcg` prefix:
 3. Create a `.env` file with the following variables:
    ```
    DISCORD_TOKEN=your_bot_token
-   MONGODB_URI=your_mongodb_uri
+   DB_PATH=./data/discord-tcg.sqlite
    ```
 4. Deploy commands:
    ```bash
@@ -93,6 +105,14 @@ The bot's configuration can be modified in `src/config/config.js`:
 - Card rarity probabilities
 - Cooldown timers
 - Other game mechanics
+
+The bot uses a local SQLite database powered by `better-sqlite3`. The database
+file is created automatically (including its schema migrations) at `DB_PATH`.
+No MongoDB server or connection string is required.
+
+This change replaces the MongoDB storage layer; it does not import an existing
+MongoDB database automatically. Back up any existing data before switching, and
+copy or export the database file with the bot when deploying to another host.
 
 ## Contributing
 

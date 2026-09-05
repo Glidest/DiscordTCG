@@ -87,6 +87,33 @@ const COMMANDS = {
         description: 'Start a battle against a bot enemy using one of your cards',
         usage: '/tcg battle <card_name> <difficulty>',
         example: '/tcg battle "Dragon" medium'
+    },
+    deck: {
+        description: 'Create and manage five-card decks',
+        usage: '/tcg deck <subcommand>',
+        example: '/tcg deck add "My Deck" "Dragon"',
+        subcommands: {
+            create: {
+                description: 'Create a deck',
+                usage: '/tcg deck create <name>',
+                example: '/tcg deck create "My Deck"'
+            },
+            add: {
+                description: 'Add an owned card to a deck',
+                usage: '/tcg deck add <name> <card>',
+                example: '/tcg deck add "My Deck" "Dragon"'
+            },
+            view: {
+                description: 'View a deck or your active deck',
+                usage: '/tcg deck view [name]',
+                example: '/tcg deck view'
+            },
+            activate: {
+                description: 'Set a deck as active',
+                usage: '/tcg deck activate <name>',
+                example: '/tcg deck activate "My Deck"'
+            }
+        }
     }
 };
 

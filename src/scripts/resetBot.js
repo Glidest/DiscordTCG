@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const Card = require('../models/Card');
 const FusedCard = require('../models/FusedCard');
 const UserCollection = require('../models/UserCollection');
@@ -6,20 +5,16 @@ const UserCredits = require('../models/UserCredits');
 const User = require('../models/User');
 const Trade = require('../models/Trade');
 const Battle = require('../models/Battle');
+const Deck = require('../models/Deck');
 const config = require('../config/config');
 const { generateCardImage } = require('../utils/cardUtils');
 const fs = require('fs').promises;
 const path = require('path');
+const { connectDB, disconnectDB } = require('../config/database');
 
 async function resetBot() {
     try {
-        // Connect to MongoDB
-        console.log('Connecting to MongoDB...');
-        await mongoose.connect(process.env.MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
-        console.log('Connected to MongoDB');
+        await connectDB();
 
         // Confirm reset
         console.log('\n⚠️  WARNING: This will reset all bot data including:');
@@ -50,6 +45,13 @@ async function resetBot() {
         }
 
         console.log('\nStarting system reset...');
+        const cardsPath = path.join(__dirname, '../config/cards.json');
+        let baseCardsData;
+        try {
+            baseCardsData = JSON.parse(await fs.readFile(cardsPath, 'utf8'));
+        } catch (_) {
+            baseCardsData = { cards: [] };
+        }
 
         // Delete all collections
         console.log('Deleting all collections...');
@@ -59,13 +61,13 @@ async function resetBot() {
             User.deleteMany({}),
             Trade.deleteMany({}),
             Battle.deleteMany({}),
+            Deck.deleteMany({}),
             Card.deleteMany({}),
             FusedCard.deleteMany({})
         ]);
 
         // Reset cards.json
         console.log('Resetting cards.json...');
-        const cardsPath = path.join(__dirname, '../config/cards.json');
         const defaultCardsData = {
             version: '1.0.0',
             lastUpdated: new Date().toISOString(),
@@ -76,10 +78,8 @@ async function resetBot() {
         };
         await fs.writeFile(cardsPath, JSON.stringify(defaultCardsData, null, 2));
 
-        // Recreate base cards if cards.json exists in config
-        const baseCardsPath = path.join(__dirname, '../config/cards.json');
+        // Recreate the base cards that were present before the reset.
         try {
-            const baseCardsData = JSON.parse(await fs.readFile(baseCardsPath, 'utf8'));
             console.log('Found base cards, recreating...');
 
             const cardsToInsert = [];
@@ -103,6 +103,8 @@ async function resetBot() {
                     imageUrl: imageUrl,
                     description: card.description.trim(),
                     set: card.set?.trim() || 'Base Set',
+                    type: card.type || null,
+                    special: Boolean(card.special),
                     power: typeof card.power === 'number' ? card.power : 0
                 });
             }
@@ -138,7 +140,7 @@ async function resetBot() {
     } catch (error) {
         console.error('Error during reset:', error);
     } finally {
-        await mongoose.disconnect();
+        await disconnectDB();
         process.exit(0);
     }
 }

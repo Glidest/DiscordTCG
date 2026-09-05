@@ -88,7 +88,7 @@ async function execute(interaction) {
         const userId = interaction.user.id;
 
         // Run database queries in parallel
-        const [user, userCollection, userCredits] = await Promise.all([
+        let [user, userCollection, userCredits] = await Promise.all([
             User.findOne({ userId }),
             UserCollection.findOne({ userId }),
             UserCredits.findOne({ userId })
