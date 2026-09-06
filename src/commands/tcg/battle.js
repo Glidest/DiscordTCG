@@ -1,7 +1,9 @@
 const { SlashCommandSubcommandBuilder } = require('@discordjs/builders');
 const UserCollection = require('../../models/UserCollection');
+const UserCredits = require('../../models/UserCredits');
 const { Card, TYPE_STRENGTHS } = require('../../models/Card');
 const { getCardAutocompleteSuggestions } = require('../../utils/cardUtils');
+const { getDeck, findDeckCard } = require('../../utils/deckUtils');
 
 const data = new SlashCommandSubcommandBuilder()
     .setName('battle')
@@ -19,7 +21,11 @@ const data = new SlashCommandSubcommandBuilder()
                 { name: 'Easy', value: 'easy' },
                 { name: 'Medium', value: 'medium' },
                 { name: 'Hard', value: 'hard' }
-            ));
+            ))
+    .addStringOption(option =>
+        option.setName('deck')
+            .setDescription('Optional deck the card must belong to')
+            .setRequired(false));
 
 // Define rarity progression for enemy cards based on player card rarity and difficulty
 const ENEMY_RARITY_MAP = {
@@ -303,8 +309,10 @@ async function simulateBattle(playerCard, enemyCard, battleCondition, userCollec
         const baseCredits = enemyCard.power;
         const multiplier = BATTLE_CONSTANTS.CREDIT_MULTIPLIERS[difficulty];
         const creditsEarned = Math.floor(baseCredits * multiplier);
-        userCollection.credits += creditsEarned;
-        await userCollection.save();
+        const userCredits = await UserCredits.findOne({ userId: userCollection.userId }) ||
+            new UserCredits({ userId: userCollection.userId, credits: 0 });
+        userCredits.credits += creditsEarned;
+        await userCredits.save();
         rewards = `You earned ${creditsEarned} credit${creditsEarned === 1 ? '' : 's'}! (${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} difficulty: ${multiplier}x multiplier)`;
     } else {
         outcome = "The battle reached the maximum number of turns!";
@@ -335,6 +343,7 @@ async function execute(interaction) {
     try {
         const cardName = interaction.options.getString('card');
         const difficulty = interaction.options.getString('difficulty');
+        const deckName = interaction.options.getString('deck');
         
         // Get user's collection and find their card
         const userCollection = await UserCollection.findOne({ userId: interaction.user.id })
@@ -358,6 +367,18 @@ async function execute(interaction) {
         if (!playerCard || !playerCard.cardId) {
             await interaction.editReply(`You don't have a card named "${cardName}" in your collection!`);
             return;
+        }
+
+        const selectedDeck = await getDeck(interaction.user.id, deckName || undefined);
+        if (deckName && !selectedDeck) {
+            await interaction.editReply(`No deck named "${deckName}" was found.`);
+            return;
+        }
+        if (selectedDeck) {
+            if (!findDeckCard(selectedDeck, cardName)) {
+                await interaction.editReply(`"${cardName}" is not in the ${selectedDeck.name} deck.`);
+                return;
+            }
         }
 
         // Get the appropriate enemy rarity based on player's card rarity and difficulty

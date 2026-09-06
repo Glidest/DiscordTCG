@@ -30,8 +30,7 @@ async function autocomplete(interaction) {
             name: { $regex: focusedValue, $options: 'i' }
         })
         .limit(25)
-        .select('name rarity')
-        .lean();
+        .select('name rarity');
 
         // Format suggestions for Discord
         const suggestions = cards.map(card => ({

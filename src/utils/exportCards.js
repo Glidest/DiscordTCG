@@ -10,11 +10,11 @@ const FusedCard = require('../models/FusedCard');
 async function exportCardsToJson() {
     try {
         // Get all regular cards
-        const cards = await Card.find({}).lean();
+        const cards = await Card.find({});
         console.log(`Found ${cards.length} regular cards in database`);
 
         // Get all fused cards
-        const fusedCards = await FusedCard.find({}).lean();
+        const fusedCards = await FusedCard.find({});
         console.log(`Found ${fusedCards.length} fused cards in database`);
 
         // Transform cards to match the expected format
@@ -37,7 +37,7 @@ async function exportCardsToJson() {
             set: card.set || 'Fused Set',
             power: card.power || 0,
             special: card.special || false,
-            components: card.components || [], // Include the components used to create this card
+            components: card.components || card.parentCards || [], // Include the components used to create this card
             isFused: true // Mark as fused card
         }));
 

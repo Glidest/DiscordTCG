@@ -14,7 +14,7 @@ async function execute(interaction) {
 
     try {
         // Get user's credits, collection, and level
-        const [userCredits, userCollection, user] = await Promise.all([
+        let [userCredits, userCollection, user] = await Promise.all([
             UserCredits.findOne({ userId: interaction.user.id }),
             UserCollection.findOne({ userId: interaction.user.id })
                 .populate({

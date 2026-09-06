@@ -1,86 +1,24 @@
-const mongoose = require('mongoose');
+const { SQLiteModel, now, id } = require('../database/model');
 
-const roundSchema = new mongoose.Schema({
-    roundNumber: {
-        type: Number,
-        required: true
-    },
-    challengerPower: {
-        type: Number,
-        required: true
-    },
-    defenderPower: {
-        type: Number,
-        required: true
-    },
-    challengerEffects: [{
-        type: String,
-        enum: ['critical_hit', 'defense_boost', 'power_steal', 'double_power', 'shield', 'none']
-    }],
-    defenderEffects: [{
-        type: String,
-        enum: ['critical_hit', 'defense_boost', 'power_steal', 'double_power', 'shield', 'none']
-    }],
-    winner: {
-        type: String,
-        enum: ['challenger', 'defender', 'tie'],
-        required: true
+class Battle extends SQLiteModel {
+    static get table() { return 'battles'; }
+    static get primaryKeyColumn() { return 'id'; }
+    static get columns() {
+        return [
+            { name: 'id', property: '_id' }, { name: 'challenger_id', property: 'challengerId' },
+            { name: 'defender_id', property: 'defenderId' }, { name: 'challenger_card_id', property: 'challengerCardId' },
+            { name: 'defender_card_id', property: 'defenderCardId' }, { name: 'status' }, { name: 'rounds' },
+            { name: 'current_round', property: 'currentRound' }, { name: 'challenger_wins', property: 'challengerWins' },
+            { name: 'defender_wins', property: 'defenderWins' }, { name: 'winner_id', property: 'winnerId' },
+            { name: 'created_at', property: 'createdAt', date: true }
+        ];
     }
-});
-
-const battleSchema = new mongoose.Schema({
-    challengerId: {
-        type: String,
-        required: true
-    },
-    defenderId: {
-        type: String,
-        required: true
-    },
-    challengerCardId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Card',
-        required: true
-    },
-    defenderCardId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Card',
-        required: true
-    },
-    status: {
-        type: String,
-        enum: ['pending', 'in_progress', 'completed', 'cancelled'],
-        default: 'pending'
-    },
-    rounds: [roundSchema],
-    currentRound: {
-        type: Number,
-        default: 1
-    },
-    challengerWins: {
-        type: Number,
-        default: 0
-    },
-    defenderWins: {
-        type: Number,
-        default: 0
-    },
-    winnerId: {
-        type: String,
-        default: null
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-        expires: 3600
+    constructor(values = {}) {
+        super({
+            status: 'pending', rounds: [], currentRound: 1, challengerWins: 0,
+            defenderWins: 0, winnerId: null, createdAt: now(), ...values
+        });
+        this._id = values._id || id();
     }
-});
-
-battleSchema.index({ challengerId: 1, status: 1 }, { 
-    partialFilterExpression: { status: { $in: ['pending', 'in_progress'] } }
-});
-battleSchema.index({ defenderId: 1, status: 1 }, { 
-    partialFilterExpression: { status: { $in: ['pending', 'in_progress'] } }
-});
-
-module.exports = mongoose.model('Battle', battleSchema); 
+}
+module.exports = Battle;

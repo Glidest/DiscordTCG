@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
 const { Card } = require('../models/Card');
 const { generateCardImage } = require('../utils/cardUtils');
 const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config();
+const { connectDB, disconnectDB } = require('../config/database');
 
 async function syncCardsToDatabase(cardsData) {
     console.log('Syncing cards to database...');
@@ -57,18 +57,7 @@ async function syncCardsToDatabase(cardsData) {
 
 async function generateCardImages() {
     try {
-        // Verify environment variables
-        if (!process.env.MONGODB_URI) {
-            throw new Error('MONGODB_URI environment variable is not set. Please check your .env file.');
-        }
-
-        // Connect to MongoDB
-        console.log('Connecting to MongoDB...');
-        await mongoose.connect(process.env.MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-        });
-        console.log('Connected to MongoDB');
+        await connectDB();
 
         // Load cards.json
         console.log('Loading cards.json...');
@@ -135,8 +124,7 @@ async function generateCardImages() {
     } catch (error) {
         console.error('Error during script execution:', error);
     } finally {
-        await mongoose.disconnect();
-        console.log('Disconnected from MongoDB');
+        await disconnectDB();
         process.exit(0);
     }
 }

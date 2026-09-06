@@ -1,109 +1,63 @@
-const mongoose = require('mongoose');
+const { SQLiteModel, now } = require('../database/model');
 
 const CARD_TYPES = {
-    BLOOD: 'Blood',
-    MIND: 'Mind',
-    TIME: 'Time',
-    TECH: 'Tech',
-    ARCANE: 'Arcane',
-    NECROTIC: 'Necrotic',
-    DEITY: 'Deity'
+    BLOOD: 'Blood', MIND: 'Mind', TIME: 'Time', TECH: 'Tech',
+    ARCANE: 'Arcane', NECROTIC: 'Necrotic', DEITY: 'Deity'
 };
-
 const TYPE_STRENGTHS = {
-    [CARD_TYPES.BLOOD]: {
-        strong: [CARD_TYPES.MIND],
-        weak: [CARD_TYPES.NECROTIC]
-    },
-    [CARD_TYPES.MIND]: {
-        strong: [CARD_TYPES.TIME],
-        weak: [CARD_TYPES.BLOOD]
-    },
-    [CARD_TYPES.TIME]: {
-        strong: [CARD_TYPES.TECH],
-        weak: [CARD_TYPES.MIND]
-    },
-    [CARD_TYPES.TECH]: {
-        strong: [CARD_TYPES.ARCANE],
-        weak: [CARD_TYPES.TIME]
-    },
-    [CARD_TYPES.ARCANE]: {
-        strong: [CARD_TYPES.NECROTIC],
-        weak: [CARD_TYPES.TECH]
-    },
-    [CARD_TYPES.NECROTIC]: {
-        strong: [CARD_TYPES.BLOOD],
-        weak: [CARD_TYPES.ARCANE]
-    },
-    [CARD_TYPES.DEITY]: {
-        strong: [CARD_TYPES.BLOOD, CARD_TYPES.MIND, CARD_TYPES.TIME, CARD_TYPES.TECH, CARD_TYPES.ARCANE, CARD_TYPES.NECROTIC],
-        weak: [CARD_TYPES.DEITY]
-    }
+    Blood: { strong: ['Mind'], weak: ['Necrotic'] },
+    Mind: { strong: ['Time'], weak: ['Blood'] },
+    Time: { strong: ['Tech'], weak: ['Mind'] },
+    Tech: { strong: ['Arcane'], weak: ['Time'] },
+    Arcane: { strong: ['Necrotic'], weak: ['Tech'] },
+    Necrotic: { strong: ['Blood'], weak: ['Arcane'] },
+    Deity: { strong: ['Blood', 'Mind', 'Time', 'Tech', 'Arcane', 'Necrotic'], weak: ['Deity'] }
 };
 
-const cardSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
-    description: { type: String, required: true },
-    rarity: { 
-        type: String, 
-        required: true,
-        enum: ['common', 'uncommon', 'rare', 'legendary', 'deity', 'fused']
-    },
-    type: {
-        type: String,
-        required: true,
-        enum: Object.values(CARD_TYPES),
-        validate: {
-            validator: function(type) {
-                // Deity type can only be used with deity rarity
-                if (type === CARD_TYPES.DEITY && this.rarity !== 'deity') {
-                    return false;
-                }
-                // Deity rarity must have deity type
-                if (this.rarity === 'deity' && type !== CARD_TYPES.DEITY) {
-                    return false;
-                }
-                return true;
-            },
-            message: props => {
-                if (props.value === CARD_TYPES.DEITY) {
-                    return 'Deity type can only be used with deity rarity cards';
-                }
-                return 'Deity rarity cards must have deity type';
-            }
+class Card extends SQLiteModel {
+    static get table() { return 'cards'; }
+    static get primaryKeyColumn() { return 'id'; }
+    static get columns() {
+        return [
+            { name: 'id', property: '_id' }, { name: 'name' }, { name: 'description' },
+            { name: 'rarity' }, { name: 'type' }, { name: 'set_name', property: 'set' },
+            { name: 'image_url', property: 'imageUrl' }, { name: 'special', boolean: true },
+            { name: 'power' }
+        ];
+    }
+    static getTypeEffectiveness(attackerType, defenderType) {
+        if (!TYPE_STRENGTHS[attackerType] || !TYPE_STRENGTHS[defenderType]) throw new Error('Invalid card type');
+        if (attackerType === CARD_TYPES.DEITY) return defenderType === CARD_TYPES.DEITY ? 'weak' : 'strong';
+        if (TYPE_STRENGTHS[attackerType].strong.includes(defenderType)) return 'strong';
+        if (TYPE_STRENGTHS[attackerType].weak.includes(defenderType)) return 'weak';
+        return 'neutral';
+    }
+    constructor(values = {}) {
+        super({
+            description: '', rarity: 'common', type: null, set: 'Base Set',
+            imageUrl: '', special: false, power: 0, ...values
+        });
+    }
+    static _save(doc) {
+        const validRarities = ['common', 'uncommon', 'rare', 'legendary', 'deity', 'fused'];
+        if (!validRarities.includes(doc.rarity)) {
+            throw new Error(`Invalid card rarity: ${doc.rarity}`);
         }
-    },
-    set: { type: String, required: true },
-    imageUrl: { type: String },
-    special: { type: Boolean, default: false },
-    power: { type: Number, default: 0 }
-});
-
-// Static method to check type effectiveness
-cardSchema.statics.getTypeEffectiveness = function(attackerType, defenderType) {
-    if (!TYPE_STRENGTHS[attackerType] || !TYPE_STRENGTHS[defenderType]) {
-        throw new Error('Invalid card type');
+        if (!Object.values(CARD_TYPES).includes(doc.type)) {
+            throw new Error(`Invalid card type: ${doc.type}`);
+        }
+        if ((doc.rarity === 'deity') !== (doc.type === CARD_TYPES.DEITY)) {
+            throw new Error('Deity cards must use deity rarity and type together');
+        }
+        if (!Number.isFinite(doc.power) || doc.power < 0) {
+            throw new Error('Card power must be a non-negative number');
+        }
+        super._save(doc);
     }
-
-    // Deity is always strong against everything except other Deity
-    if (attackerType === CARD_TYPES.DEITY) {
-        return defenderType === CARD_TYPES.DEITY ? 'weak' : 'strong';
-    }
-
-    // Check if attacker is strong against defender
-    if (TYPE_STRENGTHS[attackerType].strong.includes(defenderType)) {
-        return 'strong';
-    }
-    // Check if attacker is weak against defender
-    if (TYPE_STRENGTHS[attackerType].weak.includes(defenderType)) {
-        return 'weak';
-    }
-    // Otherwise it's neutral
-    return 'neutral';
-};
-
-module.exports = {
-    Card: mongoose.model('Card', cardSchema),
-    CARD_TYPES,
-    TYPE_STRENGTHS
-}; 
+}
+Card.CARD_TYPES = CARD_TYPES;
+Card.TYPE_STRENGTHS = TYPE_STRENGTHS;
+module.exports = Card;
+module.exports.Card = Card;
+module.exports.CARD_TYPES = CARD_TYPES;
+module.exports.TYPE_STRENGTHS = TYPE_STRENGTHS;
